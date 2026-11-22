@@ -138,6 +138,9 @@ function App() {
   const [captureBlob, setCaptureBlob] = useState(null)
   const [recognitionResult, setRecognitionResult] = useState(null)
   const [backendAvailable, setBackendAvailable] = useState(false)
+  const [paddleAvailable, setPaddleAvailable] = useState(false)
+  const [paddleModelsReady, setPaddleModelsReady] = useState(false)
+  const [paddleError, setPaddleError] = useState('')
   const [geminiConsent, setGeminiConsent] = useState(false)
   const [geminiLoading, setGeminiLoading] = useState(false)
   const [geminiAnalysis, setGeminiAnalysis] = useState('')
@@ -247,8 +250,15 @@ function App() {
         }
         result = await response.json()
         setBackendAvailable(true)
+        const paddleWorked = Boolean(result.engines?.paddle)
+        setPaddleAvailable(paddleWorked)
+        setPaddleModelsReady(paddleWorked)
+        setPaddleError(result.engine_errors?.paddle ?? '')
       } catch (apiError) {
         setBackendAvailable(false)
+        setPaddleAvailable(false)
+        setPaddleModelsReady(false)
+        setPaddleError(apiError.message)
         setStatus(apiError.name === 'AbortError'
           ? 'Local OCR request timed out. Using browser OCR fallback.'
           : 'Local AI backend unavailable. Using browser OCR fallback.')
@@ -361,8 +371,18 @@ function App() {
   useEffect(() => {
     fetch('/api/health')
       .then((response) => response.ok ? response.json() : null)
-      .then((health) => setBackendAvailable(Boolean(health?.status === 'ok')))
-      .catch(() => setBackendAvailable(false))
+      .then((health) => {
+        setBackendAvailable(Boolean(health?.status === 'ok'))
+        setPaddleAvailable(Boolean(health?.paddle_available))
+        setPaddleModelsReady(Boolean(health?.paddle_models_ready))
+        setPaddleError(health?.paddle_error ?? '')
+      })
+      .catch((healthError) => {
+        setBackendAvailable(false)
+        setPaddleAvailable(false)
+        setPaddleModelsReady(false)
+        setPaddleError(healthError.message)
+      })
     const onKeyDown = (event) => {
       if (event.repeat) return
       if (event.key === 'Enter' || event.key === ' ') {
@@ -397,10 +417,25 @@ function App() {
       </div>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <Alert severity={backendAvailable ? 'success' : 'info'} sx={{ mb: 2 }}>
-        {backendAvailable
-          ? 'Local PaddleOCR and EasyOCR backend is connected. Images stay on this device unless you explicitly request Gemini review.'
-          : 'Local OCR backend is not connected. Browser Tesseract remains available as a fallback.'}
+      <Alert
+        severity={
+          !backendAvailable || (!paddleAvailable && !paddleError && paddleModelsReady)
+            ? 'info'
+            : paddleAvailable
+              ? 'success'
+              : 'warning'
+        }
+        sx={{ mb: 2 }}
+      >
+        {!backendAvailable
+          ? 'Local OCR backend is not connected. Browser Tesseract remains available as a fallback.'
+          : paddleAvailable
+            ? 'Local PaddleOCR and EasyOCR backend is connected. Images stay on this device unless you explicitly request Gemini review.'
+            : paddleError
+              ? `OCR API is connected, but PaddleOCR failed. The result may use EasyOCR only. ${paddleError}`
+              : paddleModelsReady
+                ? 'OCR API is connected. Paddle models are installed, but the runtime has not been verified yet; the first scan will test it. EasyOCR is also available.'
+                : 'OCR API is connected, but Paddle model files are unavailable. The result may use EasyOCR only.'}
       </Alert>
 
       <section aria-label="Camera preview" className={`camera-panel${smallTextMode ? ' small-text-mode' : ''}`}>

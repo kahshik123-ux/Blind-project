@@ -12,9 +12,38 @@ class OCRApiTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_health_does_not_load_models(self) -> None:
-        response = self.client.get("/api/health")
+        with (
+            patch("backend.main._paddle_runtime_status", return_value=(True, None)),
+            patch("backend.main._PADDLE_RUNTIME_VERIFIED", False),
+            patch("backend.main._PADDLE_RUNTIME_ERROR", None),
+        ):
+            response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "ok")
+        self.assertFalse(response.json()["paddle_available"])
+        self.assertFalse(response.json()["paddle_runtime_verified"])
+
+    def test_health_reports_paddle_after_successful_inference(self) -> None:
+        with (
+            patch("backend.main._paddle_runtime_status", return_value=(True, None)),
+            patch("backend.main._PADDLE_RUNTIME_VERIFIED", True),
+            patch("backend.main._PADDLE_RUNTIME_ERROR", None),
+        ):
+            response = self.client.get("/api/health")
+
+        self.assertTrue(response.json()["paddle_available"])
+        self.assertTrue(response.json()["paddle_runtime_verified"])
+
+    def test_health_reports_paddle_runtime_import_failure(self) -> None:
+        with patch(
+            "backend.main._paddle_runtime_status",
+            return_value=(False, "ImportError: blocked by policy"),
+        ):
+            response = self.client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["paddle_available"])
+        self.assertEqual(response.json()["paddle_error"], "ImportError: blocked by policy")
 
     def test_ocr_rejects_non_image_upload(self) -> None:
         response = self.client.post(

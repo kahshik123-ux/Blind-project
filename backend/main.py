@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import importlib
 import logging
 import os
 from pathlib import Path
@@ -35,6 +36,17 @@ PADDLE_MODEL_NAMES = (
 
 app = FastAPI(title="VisionVoice Local OCR API", version="1.0.0")
 LOGGER = logging.getLogger(__name__)
+_PADDLE_RUNTIME_ERROR: str | None = None
+_PADDLE_RUNTIME_VERIFIED = False
+
+
+def _paddle_runtime_status() -> tuple[bool, str | None]:
+    try:
+        importlib.import_module("paddleocr")
+    except (ImportError, OSError) as exc:
+        LOGGER.warning("PaddleOCR runtime could not be imported: %s", exc)
+        return False, f"{type(exc).__name__}: {exc}"
+    return True, None
 
 
 class AIAnalysisRequest(BaseModel):
@@ -58,11 +70,18 @@ async def _read_image(file: UploadFile) -> tuple[Any, dict[str, Any]]:
 
 
 def _engine_call(engine_name: str, image: Any) -> tuple[dict[str, Any] | None, str | None]:
+    global _PADDLE_RUNTIME_ERROR, _PADDLE_RUNTIME_VERIFIED
     try:
         if engine_name == "paddle":
-            return recognize_paddle(image), None
+            result = recognize_paddle(image)
+            _PADDLE_RUNTIME_ERROR = None
+            _PADDLE_RUNTIME_VERIFIED = True
+            return result, None
         return recognize_easy(image), None
     except Exception as exc:
+        if engine_name == "paddle":
+            _PADDLE_RUNTIME_ERROR = f"{type(exc).__name__}: {exc}"
+            _PADDLE_RUNTIME_VERIFIED = False
         LOGGER.exception("%s failed to recognize the uploaded image", engine_name)
         return None, f"{type(exc).__name__}: {exc}"
 
@@ -96,12 +115,25 @@ async def _combined(image: Any, diagnostics: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
+    paddle_models_ready = all(
+        (PADDLE_MODELS / "official_models" / name / "inference.yml").is_file()
+        for name in PADDLE_MODEL_NAMES
+    )
+    paddle_runtime_ready, paddle_error = _paddle_runtime_status()
+    if _PADDLE_RUNTIME_ERROR:
+        paddle_runtime_ready = False
+        paddle_error = _PADDLE_RUNTIME_ERROR
+    paddle_runtime_verified = (
+        paddle_models_ready
+        and paddle_runtime_ready
+        and _PADDLE_RUNTIME_VERIFIED
+    )
     return {
         "status": "ok",
-        "paddle_available": all(
-            (PADDLE_MODELS / "official_models" / name / "inference.yml").is_file()
-            for name in PADDLE_MODEL_NAMES
-        ),
+        "paddle_available": paddle_runtime_verified,
+        "paddle_runtime_verified": paddle_runtime_verified,
+        "paddle_models_ready": paddle_models_ready,
+        "paddle_error": paddle_error,
         "easyocr_available": (
             (EASYOCR_MODELS / "craft_mlt_25k.pth").is_file()
             and (EASYOCR_MODELS / "english_g2.pth").is_file()

@@ -6,7 +6,7 @@ VisionVoice is a camera-based reading assistant. The existing React/Vite interfa
 
 - Windows 10/11 x64
 - Python 3.12 x64
-- Node.js 18+
+- Node.js 22.12+
 - Microsoft Visual C++ 2015–2022 (x64) Redistributable (required by the Paddle native CPU runtime)
 - About 2 GB of free disk space for Python packages and OCR model caches
 - CPU inference is selected by default. This project does not require CUDA or an NVIDIA GPU.
@@ -41,17 +41,10 @@ The setup command loads each model once so its official pretrained weights are d
 
 ## Run
 
-Use two PowerShell terminals:
-
 ```powershell
-# Terminal 1: local OCR API
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
-```
-
-```powershell
-# Terminal 2: React application
+# Start the local OCR API and React app together
 npm install
-npm run dev -- --host 0.0.0.0 --port 5174
+npm run dev
 ```
 
 Open the Vite URL (usually `http://localhost:5174`). In the development server, `/api` is proxied to FastAPI on port 8000. Enable **Small-text mode (2x center zoom)** for fine print; aim it at the center and capture page sections one at a time.
@@ -70,13 +63,14 @@ Set `GEMINI_API_KEY` in `.env`. Never put the key in React/Vite variables. The U
 
 ## API
 
-- `GET /api/health` — backend/model readiness without loading models
+- `GET /api/health` — backend status, cached model files, and Paddle runtime verification (Paddle is not reported available until an OCR inference succeeds)
 - `POST /api/ocr/paddle` — PaddleOCR result and confidence
 - `POST /api/ocr/easy` — EasyOCR result and confidence
 - `POST /api/ocr/combined` — two local OCR results, box-based comparison, and uncertain regions
 - `POST /api/ai/analyze` — opt-in Gemini review of the image and OCR output
 
-OCR endpoints accept multipart form data with an `image` file. Images are decoded and processed in memory; the server does not save captured documents. `/api/health` reports the model weights as ready only after the actual model files are present.
+OCR endpoints accept multipart form data with an `image` file. Images are decoded and processed in memory; the server does not save captured documents. `/api/health` does not load models; it reports Paddle as available only after a real OCR inference succeeds during the current server session.
+If the UI reports that PaddleOCR is unavailable and the API log says Windows Application Control blocked `libpaddle.pyd`, the device policy is preventing Paddle's native runtime from loading. Installing more Python packages will not fix that restriction; ask the device administrator to review/allow the official runtime, or use EasyOCR while Paddle is blocked.
 
 ## Tests
 
