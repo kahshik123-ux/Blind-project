@@ -16,15 +16,29 @@ import './App.css'
 
 const OCR_REQUEST_TIMEOUT_MS = 90_000
 
-function makeCaptureCanvas(video) {
+function makeCaptureCanvas(video, zoom = 1) {
   const canvas = document.createElement('canvas')
-  const scale = Math.min(1600 / Math.max(video.videoWidth, video.videoHeight), 2)
-  canvas.width = Math.round(video.videoWidth * scale)
-  canvas.height = Math.round(video.videoHeight * scale)
+  const sourceWidth = video.videoWidth / zoom
+  const sourceHeight = video.videoHeight / zoom
+  const sourceX = (video.videoWidth - sourceWidth) / 2
+  const sourceY = (video.videoHeight - sourceHeight) / 2
+  const scale = Math.min(1600 / Math.max(sourceWidth, sourceHeight), 2)
+  canvas.width = Math.round(sourceWidth * scale)
+  canvas.height = Math.round(sourceHeight * scale)
   const ctx = canvas.getContext('2d')
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+  ctx.drawImage(
+    video,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  )
   return canvas
 }
 
@@ -116,6 +130,7 @@ function App() {
   const streamRef = useRef(null)
   const [cameraActive, setCameraActive] = useState(false)
   const [facingMode, setFacingMode] = useState('environment')
+  const [smallTextMode, setSmallTextMode] = useState(false)
   const [status, setStatus] = useState('Camera is not started.')
   const [processing, setProcessing] = useState(false)
   const [recognizedText, setRecognizedText] = useState('')
@@ -280,7 +295,7 @@ function App() {
     setGeminiAnalysis('')
     announce('Capturing image.')
     try {
-      const frame = makeCaptureCanvas(videoRef.current)
+      const frame = makeCaptureCanvas(videoRef.current, smallTextMode ? 2 : 1)
       const imageUrl = frame.toDataURL('image/jpeg', 0.92)
       const blob = dataUrlToBlob(imageUrl)
       setCapturedImage(imageUrl)
@@ -388,7 +403,7 @@ function App() {
           : 'Local OCR backend is not connected. Browser Tesseract remains available as a fallback.'}
       </Alert>
 
-      <section aria-label="Camera preview" className="camera-panel">
+      <section aria-label="Camera preview" className={`camera-panel${smallTextMode ? ' small-text-mode' : ''}`}>
         <video ref={videoRef} muted playsInline aria-label="Live camera preview" />
         {!cameraActive && (
           <div className="camera-placeholder">
@@ -397,6 +412,27 @@ function App() {
           </div>
         )}
       </section>
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={smallTextMode}
+            onChange={(event) => {
+              const enabled = event.target.checked
+              setSmallTextMode(enabled)
+              announce(enabled
+                ? 'Small-text mode is on. Aim the text at the center of the camera.'
+                : 'Small-text mode is off. The full camera view will be captured.')
+            }}
+            disabled={processing}
+          />
+        }
+        label="Small-text mode (2× center zoom)"
+      />
+      {smallTextMode && (
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          Aim the small print at the center of the camera. This mode captures the center half; move across the page and capture each section.
+        </Typography>
+      )}
 
       {capturedImage && (
         <section className="captured-panel" aria-label="Last captured image">

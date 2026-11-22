@@ -46,6 +46,10 @@
   object-fit: contain;
 }
 
+.camera-panel.small-text-mode video {
+  transform: scale(2);
+}
+
 .camera-placeholder {
   position: absolute;
   inset: 0;

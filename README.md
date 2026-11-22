@@ -54,7 +54,7 @@ npm install
 npm run dev -- --host 0.0.0.0 --port 5174
 ```
 
-Open the Vite URL (usually `http://localhost:5174`). In the development server, `/api` is proxied to FastAPI on port 8000.
+Open the Vite URL (usually `http://localhost:5174`). In the development server, `/api` is proxied to FastAPI on port 8000. Enable **Small-text mode (2x center zoom)** for fine print; aim it at the center and capture page sections one at a time.
 To view the interface on a phone, connect it to the same network and open `http://<computer-LAN-IP>:5174`. Mobile browsers require HTTPS for camera access on a LAN address; plain HTTP can show the site but will block camera capture. Use a trusted HTTPS development address for camera testing.
 
 ## Gemini image verification (optional)
